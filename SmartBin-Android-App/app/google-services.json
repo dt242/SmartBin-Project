@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "874905521914",
+    "firebase_url": "https://smartbin-project-d41a6-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "smartbin-project-d41a6",
+    "storage_bucket": "smartbin-project-d41a6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:874905521914:android:2f59221ad77303cb304343",
+        "android_client_info": {
+          "package_name": "com.example.smartbin_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "HIDDEN_FOR_SECURITY_REASONS"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
