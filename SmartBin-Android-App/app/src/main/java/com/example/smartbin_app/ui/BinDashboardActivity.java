@@ -34,6 +34,7 @@ public class BinDashboardActivity extends AppCompatActivity {
     private String binId, binName;
     private DatabaseReference binRef;
     private ValueEventListener binListener;
+    private boolean isMaintenanceActive = false;
 
     private final ActivityResultLauncher<Intent> imagePickerLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
@@ -99,6 +100,18 @@ public class BinDashboardActivity extends AppCompatActivity {
             Toast.makeText(this, R.string.toast_opening_command, Toast.LENGTH_SHORT).show();
         });
 
+        binding.btnDashOpen.setOnLongClickListener(v -> {
+            binRef.child("remoteCommand").setValue(2);
+
+            if (isMaintenanceActive) {
+                Toast.makeText(this, getString(R.string.toast_maintenance_off), Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, getString(R.string.toast_maintenance_on), Toast.LENGTH_SHORT).show();
+            }
+
+            return true;
+        });
+
         binding.cvActualPhoto.setOnLongClickListener(v -> {
             new androidx.appcompat.app.AlertDialog.Builder(BinDashboardActivity.this)
                     .setTitle(getString(R.string.dialog_delete_photo_title))
@@ -153,6 +166,14 @@ public class BinDashboardActivity extends AppCompatActivity {
 
                 boolean flame = snapshot.child("flameAlert").exists() && Boolean.TRUE.equals(snapshot.child("flameAlert").getValue(Boolean.class));
                 boolean gas = snapshot.child("gasAlert").exists() && Boolean.TRUE.equals(snapshot.child("gasAlert").getValue(Boolean.class));
+
+                isMaintenanceActive = snapshot.child("maintenanceMode").exists() && Boolean.TRUE.equals(snapshot.child("maintenanceMode").getValue(Boolean.class));
+
+                if (isMaintenanceActive) {
+                    binding.btnDashOpen.setText(getString(R.string.btn_close_text));
+                } else {
+                    binding.btnDashOpen.setText(getString(R.string.btn_open_text));
+                }
 
                 binding.alertFlame.setVisibility(flame ? View.VISIBLE : View.GONE);
                 binding.alertGas.setVisibility(gas ? View.VISIBLE : View.GONE);
