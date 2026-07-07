@@ -33,14 +33,17 @@ bool cfg_beepOpen = true;
 bool cfg_beepFull = true;          
 bool cfg_beepGas = true;           
 
-const int BIN_HEIGHT_CM = 30; 
+const int BIN_HEIGHT_CM = 25; 
 const unsigned long INTERVAL_FULL_BEEP = 1800000; 
 const unsigned long INTERVAL_GAS_BEEP = 600000;   
 
 Servo lidServo;
 bool isOpen = false;
+bool isMaintenanceMode = false;
 unsigned long lidOpenedAt = 0;
 int trashPercentage = 0;
+bool isBinReadyForEmptying = false;
+bool isBinFull = false;
 
 unsigned long fullBeepTimer = 0;
 unsigned long gasBeepTimer = 0;
@@ -63,22 +66,29 @@ FirebaseConfig config;
 String binID;
 String customBinName; 
 
-void sendPushNotification(String title, String message) {
+void sendPushNotification(String eventCode) {
   if (!isOnline) return;
   
-  Serial.println("Изпращане на Push известие: " + title);
-
   FCM_HTTPv1_JSON_Message fcmMsg;
   fcmMsg.topic = "bin_" + binID; 
-  fcmMsg.notification.title = title;
-  fcmMsg.notification.body = message;
+  
+  fcmMsg.data = "{\"eventCode\":\"" + eventCode + "\", \"binName\":\"" + customBinName + "\"}";
   fcmMsg.android.priority = "high";
 
   if (Firebase.FCM.send(&fbdo, &fcmMsg)) {
-    Serial.println("УСПЕХ: Известието е изпратено към телефона!");
-  } else {
-    Serial.println("ГРЕШКА при изпращане на известие: " + fbdo.errorReason());
+    Serial.println("Известие (Data) изпратено!");
   }
+}
+
+void logEvent(String icon, String eventCode) {
+  if (!isOnline) return;
+  
+  FirebaseJson json;
+  json.set("icon", icon);
+  json.set("eventCode", eventCode); 
+  json.set("timestamp/.sv", "timestamp");
+
+  Firebase.RTDB.pushJSON(&fbdo, "/bins/" + binID + "/logs", &json);
 }
 
 void setup() {
@@ -130,16 +140,31 @@ void setup() {
     Firebase.begin(&config, &auth);
     Firebase.reconnectWiFi(true);
 
-    FirebaseJson json;
-    json.set("triggerDistance", cfg_triggerDistance);
-    json.set("openAngle", cfg_openAngle);
-    json.set("openDuration", cfg_openDuration);
-    json.set("redThresh", cfg_redThresh);
-    json.set("yellowThresh", cfg_yellowThresh);
-    json.set("beepOpen", cfg_beepOpen);
-    json.set("beepFull", cfg_beepFull);
-    json.set("beepGas", cfg_beepGas);
-    Firebase.RTDB.setJSON(&fbdo, "/bins/" + binID + "/settings", &json);
+    if (Firebase.RTDB.getJSON(&fbdo, "/bins/" + binID + "/settings")) {
+      FirebaseJson &json = fbdo.jsonObject();
+      FirebaseJsonData data;
+      if (json.get(data, "triggerDistance")) cfg_triggerDistance = data.intValue;
+      if (json.get(data, "openAngle"))       cfg_openAngle = data.intValue;
+      if (json.get(data, "openDuration"))    cfg_openDuration = data.intValue;
+      if (json.get(data, "redThresh"))       cfg_redThresh = data.intValue;
+      if (json.get(data, "yellowThresh"))    cfg_yellowThresh = data.intValue;
+      if (json.get(data, "beepOpen"))        cfg_beepOpen = data.boolValue;
+      if (json.get(data, "beepFull"))        cfg_beepFull = data.boolValue;
+      if (json.get(data, "beepGas"))         cfg_beepGas = data.boolValue;
+    } else {
+      FirebaseJson json;
+      json.set("triggerDistance", cfg_triggerDistance);
+      json.set("openAngle", cfg_openAngle);
+      json.set("openDuration", cfg_openDuration);
+      json.set("redThresh", cfg_redThresh);
+      json.set("yellowThresh", cfg_yellowThresh);
+      json.set("beepOpen", cfg_beepOpen);
+      json.set("beepFull", cfg_beepFull);
+      json.set("beepGas", cfg_beepGas);
+      Firebase.RTDB.setJSON(&fbdo, "/bins/" + binID + "/settings", &json);
+    }
+    Firebase.RTDB.setInt(&fbdo, "/bins/" + binID + "/remoteCommand", 0);
+    Firebase.RTDB.setBool(&fbdo, "/bins/" + binID + "/maintenanceMode", false);
   }
 }
 
@@ -176,14 +201,40 @@ void loop() {
     Firebase.RTDB.setInt(&fbdo, "/bins/" + binID + "/trashPercentage", trashPercentage);
     Firebase.RTDB.setBool(&fbdo, "/bins/" + binID + "/flameAlert", isFlameAlert);
     Firebase.RTDB.setBool(&fbdo, "/bins/" + binID + "/gasAlert", isGasAlert);
+
+    Firebase.RTDB.setBool(&fbdo, "/bins/" + binID + "/maintenanceMode", isMaintenanceMode);
     
-    if (Firebase.RTDB.getInt(&fbdo, "/bins/" + binID + "/remoteCommand") && fbdo.intData() == 1 && !isOpen) {
-      if (cfg_beepOpen) beep(1, 150);
-      lidServo.attach(SERVO_PIN, 500, 2400);
-      lidServo.write(cfg_openAngle); 
-      isOpen = true;
-      lidOpenedAt = currentMillis;
-      Firebase.RTDB.setInt(&fbdo, "/bins/" + binID + "/remoteCommand", 0); 
+    if (Firebase.RTDB.getInt(&fbdo, "/bins/" + binID + "/remoteCommand")) {
+      int cmd = fbdo.intData();
+      if (cmd == 1 && !isOpen && !isMaintenanceMode) {
+        if (cfg_beepOpen) beep(1, 150);
+        lidServo.attach(SERVO_PIN, 500, 2400);
+        int realAngle = cfg_openAngle - 10;
+        if (realAngle < 0) realAngle = 0;
+        lidServo.write(realAngle);   
+        isOpen = true;
+        lidOpenedAt = currentMillis;
+        Firebase.RTDB.setInt(&fbdo, "/bins/" + binID + "/remoteCommand", 0); 
+      } 
+      else if (cmd == 2) {
+        isMaintenanceMode = !isMaintenanceMode; 
+        if (isMaintenanceMode) {
+          if (cfg_beepOpen) beep(1, 300); 
+          lidServo.attach(SERVO_PIN, 500, 2400);
+          int realAngle = cfg_openAngle - 10;
+          if (realAngle < 0) realAngle = 0;
+          lidServo.write(realAngle);   
+          isOpen = true;
+        } else {
+          if (cfg_beepOpen) beep(1, 150); 
+          lidServo.write(0); 
+          delay(500); 
+          lidServo.detach(); 
+          isOpen = false;
+          delay(1000);
+        }
+        Firebase.RTDB.setInt(&fbdo, "/bins/" + binID + "/remoteCommand", 0);
+      }
     }
   }
 
@@ -214,13 +265,15 @@ void loop() {
     if (proxDistance > 0 && proxDistance <= cfg_triggerDistance) { 
       if (cfg_beepOpen) beep(1, 150); 
       lidServo.attach(SERVO_PIN, 500, 2400);
-      lidServo.write(cfg_openAngle); 
+      int realAngle = cfg_openAngle - 10;
+      if (realAngle < 0) realAngle = 0;
+      lidServo.write(realAngle);
       isOpen = true;
       lidOpenedAt = currentMillis;
     }
   }
 
-  if (isOpen && (currentMillis - lidOpenedAt >= cfg_openDuration)) { 
+  if (isOpen && !isMaintenanceMode && (currentMillis - lidOpenedAt >= cfg_openDuration)) {
     lidServo.write(0); 
     delay(500); 
     lidServo.detach(); 
@@ -232,7 +285,8 @@ void loop() {
 
   if (currentFlameReading) { 
     if (!isFlameAlert) {
-      sendPushNotification("🔥 WARNING: Flame detected!", "Flame detected in bin: " + customBinName);
+      sendPushNotification("fire_alert");
+      logEvent("🔥", "fire_alert");
     }
     
     isFlameAlert = true;
@@ -250,54 +304,70 @@ void loop() {
     }
 
     if (isFlameAlert && (currentMillis - lastFlameTime >= 5000)) {
+      sendPushNotification("fire_cleared");
+      logEvent("🧯", "fire_cleared");
       isFlameAlert = false;
     }
 
-    int currentGasReading = analogRead(GAS_PIN);
-    
-    if (currentGasReading > 300) {
-      if (!isGasAlert) {
-        sendPushNotification("🤢 Warning: Bad smell!", "Bad smell detected in bin: " + customBinName);
+    if (currentMillis > 15000) { 
+      int currentGasReading = analogRead(GAS_PIN);
+      
+      if (currentGasReading > 300) {
+        if (!isGasAlert) {
+          sendPushNotification("gas_alert");
+          logEvent("🤢", "gas_alert");
+        }
+        isGasAlert = true;
+      } else if (currentGasReading < 250) {
+        if (isGasAlert) { 
+          sendPushNotification("gas_cleared");
+          logEvent("🌸", "gas_cleared");
+        }
+        isGasAlert = false;
       }
-      isGasAlert = true;
-    } else if (currentGasReading < 250) {
-      isGasAlert = false;
-    }
 
-    if (!gasCooldownActive) {
-      if (isGasAlert) {
-        if (cfg_beepGas) beep(3, 150); 
-        gasBeepTimer = currentMillis;
-        gasCooldownActive = true;
-      }
-    } else {
-      if (currentMillis - gasBeepTimer >= INTERVAL_GAS_BEEP) {
+      if (!gasCooldownActive) {
         if (isGasAlert) {
-          if (cfg_beepGas) beep(3, 150);
+          if (cfg_beepGas) beep(3, 150); 
           gasBeepTimer = currentMillis;
+          gasCooldownActive = true;
+        }
+      } else {
+        if (isGasAlert) {
+          if (currentMillis - gasBeepTimer >= INTERVAL_GAS_BEEP) {
+            if (cfg_beepGas) beep(3, 150);
+            gasBeepTimer = currentMillis;
+          }
         } else {
           gasCooldownActive = false;
         }
       }
     }
 
-    bool isFullNow = (trashPercentage >= cfg_redThresh);
+    if (trashPercentage >= cfg_redThresh) {
+      isBinFull = true;
+    } else if (trashPercentage < cfg_yellowThresh) {
+      isBinFull = false; 
+    }
+
     if (!fullCooldownActive) {
-      if (isFullNow) {
-        sendPushNotification("🗑️ Bin is full!", "Please empty the bin: " + customBinName);
+      if (isBinFull) { 
+        sendPushNotification("bin_full");
+        logEvent("🗑️", "bin_full");
         if (cfg_beepFull) beep(2, 150); 
         fullBeepTimer = currentMillis;
         fullCooldownActive = true;
       }
     } else {
-      if (currentMillis - fullBeepTimer >= INTERVAL_FULL_BEEP) {
-        if (isFullNow) {
-          sendPushNotification("🗑️ Bin is still full!", "Please empty the bin: " + customBinName);
+      if (isBinFull) { 
+        if (currentMillis - fullBeepTimer >= INTERVAL_FULL_BEEP) {
+          sendPushNotification("bin_full");
+          logEvent("🗑️", "bin_full");
           if (cfg_beepFull) beep(2, 150);
           fullBeepTimer = currentMillis;
-        } else {
-          fullCooldownActive = false;
         }
+      } else {
+        fullCooldownActive = false;
       }
     }
   }
@@ -312,7 +382,18 @@ void loop() {
       if (newPercentage > 100) newPercentage = 100;
       
       trashPercentage = (trashPercentage * 3 + newPercentage) / 4;
-
+      
+      if (trashPercentage >= cfg_redThresh) {
+        isBinReadyForEmptying = true;
+      }
+      
+      if (isBinReadyForEmptying && trashPercentage < cfg_yellowThresh) {
+        sendPushNotification("bin_emptied");
+        logEvent("♻️", "bin_emptied");
+        
+        isBinReadyForEmptying = false; 
+      }
+      
       digitalWrite(LED_GREEN, LOW);
       digitalWrite(LED_YELLOW, LOW);
       digitalWrite(LED_RED, LOW);
