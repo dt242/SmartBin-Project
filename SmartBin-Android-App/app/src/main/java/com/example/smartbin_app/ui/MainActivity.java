@@ -180,32 +180,6 @@ public class MainActivity extends AppCompatActivity {
                     if (snapshot.child("flameAlert").exists()) bin.flameAlert = snapshot.child("flameAlert").getValue(Boolean.class);
                     if (snapshot.child("gasAlert").exists()) bin.gasAlert = snapshot.child("gasAlert").getValue(Boolean.class);
 
-                    DatabaseReference logsRef = FirebaseDatabase.getInstance().getReference("bins").child(bin.id).child("logs");
-                    long now = System.currentTimeMillis();
-
-                    if (bin.oldPercentage != -1) {
-                        if (bin.oldPercentage >= 60 && bin.percentage <= 20) {
-                            logsRef.push().setValue(new LogAdapter.LogEvent(now, "♻️", getString(R.string.log_bin_emptied)));
-                        } else if (bin.oldPercentage < 80 && bin.percentage >= 80) {
-                            logsRef.push().setValue(new LogAdapter.LogEvent(now, "🗑️", getString(R.string.log_bin_full)));
-                        }
-                    }
-                    bin.oldPercentage = bin.percentage;
-
-                    if (bin.flameAlert && !bin.wasFlame) {
-                        logsRef.push().setValue(new LogAdapter.LogEvent(now, "🔥", getString(R.string.log_flame_detected)));
-                    } else if (!bin.flameAlert && bin.wasFlame) {
-                        logsRef.push().setValue(new LogAdapter.LogEvent(now, "✅", getString(R.string.log_fire_cleared)));
-                    }
-                    bin.wasFlame = bin.flameAlert;
-
-                    if (bin.gasAlert && !bin.wasGas) {
-                        logsRef.push().setValue(new LogAdapter.LogEvent(now, "🤢", getString(R.string.log_smell_detected)));
-                    } else if (!bin.gasAlert && bin.wasGas) {
-                        logsRef.push().setValue(new LogAdapter.LogEvent(now, "✅", getString(R.string.log_smell_cleared)));
-                    }
-                    bin.wasGas = bin.gasAlert;
-
                     adapter.notifyDataSetChanged();
                     checkGlobalAlerts();
                 }
