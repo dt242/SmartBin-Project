@@ -28,19 +28,44 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
     public void onMessageReceived(@NonNull RemoteMessage remoteMessage) {
         super.onMessageReceived(remoteMessage);
 
-        String title = getString(R.string.app_name);
-        String body = "";
+        String eventCode = "";
+        String binName = "";
 
-        if (remoteMessage.getNotification() != null) {
-            title = remoteMessage.getNotification().getTitle();
-            body = remoteMessage.getNotification().getBody();
-        }
-        else if (!remoteMessage.getData().isEmpty()) {
-            title = remoteMessage.getData().get("title");
-            body = remoteMessage.getData().get("body");
+        if (!remoteMessage.getData().isEmpty()) {
+            eventCode = remoteMessage.getData().get("eventCode");
+            binName = remoteMessage.getData().get("binName");
         }
 
-        if (body != null && !body.isEmpty()) {
+        if (eventCode != null && !eventCode.isEmpty()) {
+            String title = getString(R.string.app_name);
+            String body = "";
+
+            switch (eventCode) {
+                case "fire_alert":
+                    title = getString(R.string.push_fire_alert_title);
+                    body = getString(R.string.push_fire_alert_body) + " " + binName;
+                    break;
+                case "fire_cleared":
+                    title = getString(R.string.push_fire_cleared_title);
+                    body = getString(R.string.push_fire_cleared_body) + " " + binName;
+                    break;
+                case "gas_alert":
+                    title = getString(R.string.push_gas_alert_title);
+                    body = getString(R.string.push_gas_alert_body) + " " + binName;
+                    break;
+                case "gas_cleared":
+                    title = getString(R.string.push_gas_cleared_title);
+                    body = getString(R.string.push_gas_cleared_body) + " " + binName;
+                    break;
+                case "bin_full":
+                    title = getString(R.string.push_full_alert_title);
+                    body = getString(R.string.push_full_alert_body) + " " + binName;
+                    break;
+                case "bin_emptied":
+                    title = getString(R.string.push_emptied_title);
+                    body = getString(R.string.push_emptied_body) + " " + binName;
+                    break;
+            }
             showNotification(title, body);
         }
     }
@@ -65,7 +90,7 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
         );
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, channelId)
-                .setSmallIcon(R.mipmap.ic_launcher)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle(title)
                 .setContentText(message)
                 .setAutoCancel(true)
