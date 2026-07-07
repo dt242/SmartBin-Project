@@ -123,10 +123,18 @@ public class HistoryActivity extends AppCompatActivity {
             if (filterFire || filterSmell || filterFull || filterEmptied) {
                 matchesCategory = false;
 
-                if (filterFire && "🔥".equals(log.icon)) matchesCategory = true;
-                if (filterSmell && "🤢".equals(log.icon)) matchesCategory = true;
-                if (filterFull && "🗑️".equals(log.icon)) matchesCategory = true;
-                if (filterEmptied && "♻️".equals(log.icon)) matchesCategory = true;
+                if (filterFire) {
+                    if ((log.eventCode != null && log.eventCode.contains("fire")) || "🔥".equals(log.icon) || "🧯".equals(log.icon)) matchesCategory = true;
+                }
+                if (filterSmell) {
+                    if ((log.eventCode != null && log.eventCode.contains("gas")) || "🤢".equals(log.icon) || "🌸".equals(log.icon)) matchesCategory = true;
+                }
+                if (filterFull) {
+                    if ("bin_full".equals(log.eventCode) || "🗑️".equals(log.icon)) matchesCategory = true;
+                }
+                if (filterEmptied) {
+                    if ("bin_emptied".equals(log.eventCode) || "♻️".equals(log.icon)) matchesCategory = true;
+                }
             }
 
             boolean matchesTime = true;
